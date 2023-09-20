@@ -27,7 +27,7 @@ git clone https://github.com/davideshay/cloudflare-ddns-updater.git
 
 To use the script as a container:
 ```bash
-docker run --env-file [file with environment variables] --name cddns -it ghcr.io/davideshay/cloudflare-ddns-updater:main
+docker run --env-file [file with environment variables] --name cddns -it ghcr.io/davideshay/cloudflare-ddns-updater:latest
 ```
 
 ## Environment Variables Used
