@@ -185,22 +185,26 @@ function get_cloudflare_domain_record {
                       -H "${auth_header}" -H "${email_header}" -H "${content_header}")
   if [ "$get_ipv4_code" != "200" ]; then
     logit E "Invalid return code when getting zone info: ${get_ipv4_code}"
+    rm $tmp_domain_out
     return 2
   fi;
 
   local rec_count=$(cat $tmp_domain_out | jq -r .result_info.count)
   if [ "${rec_count}" =  "0" ]; then
     logit I "No cloudflare records currently exist."
+    rm $tmp_domain_out
     return 3
   fi
   if ! [ "${rec_count}" = "1" ]; then
     logit E "Returned more than 1 record when getting zone info"
+    rm $tmp_domain_out
     return 2
   fi;
   
   old_ipv4=$(cat $tmp_domain_out | jq -r .result[].content)
   if [[ ! $old_ipv4 =~ ^$ipv4_regex$ ]]; then
     logit E "Invalid IP address returned from zone data : ${old_ipv4}"
+    rm $tmp_domain_out
     return 2
   fi;
 
@@ -312,12 +316,11 @@ function update_all_cloudflare_records() {
     local allrecs_httpcode=$(curl -s -w "%{http_code}" -o ${tmp_allrecs_out} -X GET "https://api.cloudflare.com/client/v4/zones/$ZONE_IDENTIFIER/dns_records?type=A" \
                       -H "${auth_header}" -H "${email_header}" -H "${content_header}")
     if [ "${allrecs_httpcode}" != "200" ]; then
+      rm $tmp_allrecs_out
       return 2
     fi
     local tmp_allrecs=$(mktemp '/tmp/ddns-allrecs-XXXXXXXX')
     cat $tmp_allrecs_out | jq -r '.result[] | "\(.name) \(.id) \(.content) \(.proxied)"' > $tmp_allrecs
-    logit D "jq after:"
-    cat $tmp_allrecs
 # produces a file with multiple lines, 1 for every record with the format:
 # name record-identifier ip-address proxied
     rm $tmp_allrecs_out
@@ -392,7 +395,6 @@ function update_all_cloudflare_records() {
     done
 
     rm $tmp_allrecs
-
 }
 
 ###########################################
@@ -422,6 +424,8 @@ function get_check_update() {
       fi;
     fi
     update_cache
+  else
+    logit I "IP Address is the same as cached value, no update required"
   fi
 }
 
