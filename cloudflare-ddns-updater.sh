@@ -227,11 +227,35 @@ function get_cloudflare_domain_record {
 ###########################################
 function create_cloudflare_record() {
   logit I "Creating new cloudflare record: $1 TTL: $2 Proxied: $3"
-  create=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_IDENTIFIER/dns_records" \
+  local create_data=$(mktemp '/tmp/ddns-createdata-XXXXXXXX')
+  create_httpcode=$(curl -s -w "%{http_code}" -o ${create_data} -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_IDENTIFIER/dns_records" \
       -H "${auth_header}" -H "${email_header}" -H "${content_header}" \
       --data "{\"content\":\"${ipv4}\",\"name\":\"$1\",\"proxied\":$3,\"type\":\"A\",\"ttl\":$2}")
+  local create_results=$(cat ${create_data})
+  if [ "${create_httpcode}" != "200" ]; then
+      logit E "Error creating record \n${create_results}"
+      rm ${create_data}
+      return 1
+  fi
+  if [ ! -s ${create_data} ]; then
+      logit E "No output from create process."
+      rm ${create_data}
+      return 1
+  fi
 
-  logit D "Create results: $create"
+  ## Parse status from json
+  local create_success=$(cat ${create_data} | jq -r .success)
+
+  if [ "S{create_success}" = "true" ]; then
+    logit I "Create: $ipv4 $1 record created."
+    rm ${create_data}
+    return 0
+  else
+    local failed_create=$(cat ${create_data})
+    logit E "Creation of record for $ipv4 $1 failed. RESULTS:\n$failed_create"
+    rm ${create_data}
+    return 1
+  fi
 
 }
 
@@ -246,19 +270,35 @@ function update_one_cloudflare_record() {
   logit D "Updating one cloudflare record : $1"
   local recid_to_change=$1
   local recname_to_change=$2
+  local update_data=$(mktemp '/tmp/ddns-update1data-XXXXXXXX')
   ## Change the IP@Cloudflare using the API
-  update=$(curl -s -X PATCH "https://api.cloudflare.com/client/v4/zones/$ZONE_IDENTIFIER/dns_records/$recid_to_change" \
+  update_httpcode=$(curl -s -w "%{http_code}" -o ${update_data} -X PATCH "https://api.cloudflare.com/client/v4/zones/$ZONE_IDENTIFIER/dns_records/$recid_to_change" \
                       -H "${auth_header}" -H "${email_header}" -H "${content_header}" \
                       --data "{\"type\":\"A\",\"name\":\"$recname_to_change\",\"content\":\"$ipv4\",\"ttl\":\"$TTL\",\"proxied\":$3}")
-  ## Report the status
-  case "$update" in
-  *"\"success\":false"*)
-    logit E "Update of $ipv4 $recname_to_change DDNS failed for $recid_to_change ($ipv4). DUMPING RESULTS:\n$update"
-    return 1;;
-  *)
+  if [ "${update_httpcode}" != "200" ]; then
+      logit E "Update of $ipv4 $recname_to_change DDNS failed for $recid_to_change ($ipv4). DUMPING RESULTS:\n$update"
+      rm ${update_data}
+      return 1;
+  fi
+  if [ ! -s ${update_data} ]; then
+      logit E "Update of $ipv4 $recname_to_change DDNS failed for $recid_to_change ($ipv4). DUMPING RESULTS:\n$update"
+      rm ${update_data}
+      return 1;
+  fi
+
+  ## Parse status from json
+  local upd_success=$(cat ${update_data} | jq -r .success)
+
+  if [ "S{upd_success}" = "true" ]; then
     logit I "Update: $ipv4 $recname_to_change DDNS updated."
-    return 0;;
-  esac
+    rm ${update_data}
+    return 0
+  else
+    local failed_update=$(cat ${update_data})
+    logit E "Update of $ipv4 $recname_to_change DDNS failed for $recid_to_change ($ipv4). DUMPING RESULTS:\n$failed_update"
+    rm ${update_data}
+    return 1
+  fi
 
 }
 
@@ -275,10 +315,6 @@ function update_all_cloudflare_records() {
       return 2
     fi
     local tmp_allrecs=$(mktemp '/tmp/ddns-allrecs-XXXXXXXX')
-    ###  TEST
-    local tmp_data=$(cat $tmp_allrecs_out)
-    logit D "all_recs_out is ${tmp_data}"
-    ###
     cat $tmp_allrecs_out | jq -r '.result[] | "\(.name) \(.id) \(.content) \(.proxied)"' > $tmp_allrecs
     logit D "jq after:"
     cat $tmp_allrecs
