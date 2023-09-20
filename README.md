@@ -24,6 +24,7 @@ docker run ...
 
 ## Environment Variables Used
 
+```
 AUTH_EMAIL - Email address for cloudflare account
 AUTH_METHOD - "global" if using global API key, "token" (preferred) if using an API token for 1 zone
 AUTH_KEY - API key / token
@@ -36,6 +37,7 @@ UPDATE_IPV6 - currently unsupported - "true" if you want to update the AAAA reco
 MODE - "loop" to keep updating, "once" to run one time (useful if scheduling other ways or for testing)
 REPEAT_SECONDS - Number of seconds between updates, defaults to 300
 CACHE_FILE - temporary file used for caching. Defaults to a mktemp file in /tmp
+```
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
