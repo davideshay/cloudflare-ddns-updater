@@ -5,10 +5,12 @@ This script is used to update Dynamic DNS (DDNS) service based on Cloudflare! Ac
 This was forked from the good work at [https://github.com/K0p1-Git/cloudflare-ddns-updater](https://github.com/K0p1-Git/cloudflare-ddns-updater).
 
 Main Features Included are:
-- Main intent is to use with Docker/Kubernetes as a container -- container build included
+- Main intent is to use with Docker/Kubernetes as a container -- container build included. Logs to stdout directly for container log viewing ease.
+- Date/Severity log format for ease of integration into log capture/reporting
 - Takes input from environment variables rather than hard-coded in the script
 - No need for cron - can run in a loop and keep updating every x seconds as specified
-
+- Ability to create the base entry for the domain in cloudflare, not just update existing
+- Can update multiple cloudflare records, not just the base domain
 
 ## Installation
 
@@ -19,7 +21,7 @@ git clone https://github.com/davideshay/cloudflare-ddns-updater.git
 
 To use the script as a container:
 ```bash
-docker run ...
+docker run --env-file [file with environment variables] --name cddns -it ghcr.io/davideshay/cloudflare-ddns-updater:main
 ```
 
 ## Environment Variables Used
