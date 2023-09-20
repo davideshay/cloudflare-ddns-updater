@@ -6,12 +6,13 @@ AUTH_KEY=${AUTH_KEY:=""}                                # Your API Token or Glob
 ZONE_IDENTIFIER=${ZONE_IDENTIFIER:=""}                  # Can be found in the "Overview" tab of your domain
 DOMAIN_NAME=${DOMAIN_NAME:=""}                          # Domain name to update - (no prefix)
 RECORD_NAMES=${RECORD_NAMES:=""}                        # Which records you want to be synced (space separated list, without full domain name). If left empty will only update domain name entry
-TTL=${TTL:="3600"}                                      # Set the DNS TTL (seconds)
+TTL=${TTL:="1"}                                          # Set the DNS TTL (seconds) 1 = auto
 PROXY=${PROXY:="false"}                                 # Set the proxy to true or false
 UPDATE_IPV6=${UPDATE_IPV6:="false"}                     # Update IPV6 records in addition to IPV4
 MODE=${MODE:="loop"}                                    # "loop" or "once" - run forever in loop or just once
 REPEAT_SECONDS=${REPEAT_SECONDS:="300"}                 # If in loop mode, how often to run
-CACHE_FILE=${CACHE_FILE:= $(mktemp /tmp/ddns.XXXXXXXX)}  # file name to hold cached IP address
+CACHE_FILE=${CACHE_FILE:=$(mktemp /tmp/ddns.XXXXXXXX)}  # file name to hold cached IP address
+LOG_LEVEL=${LOG_LEVEL:="I"}                             # Log level - D)ebug I)nfo E)rror
 
 set -f            # Allow for fields like RECORD_NAMES to have wildcard values
 
@@ -31,9 +32,26 @@ set -f            # Allow for fields like RECORD_NAMES to have wildcard values
 #  $2 - message
 ###################################################
 function logit () {
-  prefix=$(date +%x\ %X)
-  prefix=$prefix" "$1
-  echo $prefix" "$2
+  local include_it=true
+  case $LOG_LEVEL in
+    "D")
+      ;;
+    "I")
+      if [ "$1" = "D" ]; then
+        include_it=false;
+      fi
+      ;;
+    "E")
+      if [ "$1" != "E" ]; then
+        include_it=false;
+      fi
+      ;;
+  esac
+  if [ "${include_it}" = "true" ]; then  
+      prefix=$(date +%x\ %X)
+      prefix=$prefix" "$1
+      echo $prefix" "$2
+  fi
 }
 
 ###########################################
@@ -126,7 +144,13 @@ function check_cache() {
 # Check if same as cached value - return 1 if true, otherwise 0
 ###########################################
 function update_cache() {
-  sed -n -e 's/^.*ipv4 /ipv4 ${ipv4}/g' > $CACHE_FILE
+  if [ ! -s "${CACHE_FILE}" ]; then
+    logit D "Cache file is empty.... creating..."
+    echo "ipv4 ${ipv4}" > $CACHE_FILE
+  else
+    logit D "Cache file exists, updating contents..."
+    sed -n -e 's/^.*ipv4 /ipv4 ${ipv4}/g' $CACHE_FILE > $CACHE_FILE
+  fi
   cache_string=$(cat $CACHE_FILE)
   logit D "Cache file contents after update: ${cache_string}"
 }
@@ -150,6 +174,7 @@ function set_curl_headers() {
 # return 0 - no update needed
 #        1 - different, update needed
 #        2 - error retrieving info
+#        3 - no records, must be created
 ###########################################
 function get_cloudflare_domain_record {
   logit I "Check of Cloudflare initiated"
@@ -164,6 +189,10 @@ function get_cloudflare_domain_record {
   fi;
 
   local rec_count=$(cat $tmp_domain_out | jq -r .result_info.count)
+  if [ "${rec_count}" =  "0" ]; then
+    logit I "No cloudflare records currently exist."
+    return 3
+  fi
   if ! [ "${rec_count}" = "1" ]; then
     logit E "Returned more than 1 record when getting zone info"
     return 2
@@ -191,19 +220,36 @@ function get_cloudflare_domain_record {
 }
 
 ###########################################
+# Create a cloudflare record
+# parameters: 1 = name to create
+#             2 = ttl of new record
+#             3 - proxied - true/false
+###########################################
+function create_cloudflare_record() {
+  logit I "Creating new cloudflare record: $1 TTL: $2 Proxied: $3"
+  create=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_IDENTIFIER/dns_records" \
+      -H "${auth_header}" -H "${email_header}" -H "${content_header}" \
+      --data "{\"content\":\"${ipv4}\",\"name\":\"$1\",\"proxied\":$3,\"type\":\"A\",\"ttl\":$2}")
+
+  logit D "Create results: $create"
+
+}
+
+
+###########################################
 # Update 1 cloudflare record
 # parameters: 1 = record id to change
 #             2 = name to change
+#             3 - existing record is proxied
 ###########################################
 function update_one_cloudflare_record() {
   logit D "Updating one cloudflare record : $1"
   local recid_to_change=$1
   local recname_to_change=$2
   ## Change the IP@Cloudflare using the API
-  update=$(curl -s -X PATCH "https://api.cloudflare.com/client/v4/zones/$zone_identifier/dns_records/$recid_to_change" \
+  update=$(curl -s -X PATCH "https://api.cloudflare.com/client/v4/zones/$ZONE_IDENTIFIER/dns_records/$recid_to_change" \
                       -H "${auth_header}" -H "${email_header}" -H "${content_header}" \
-                      --data "{\"type\":\"A\",\"name\":\"$recname_to_change\",\"content\":\"$ipv4\",\"ttl\":\"$TTL\",\"proxied\":${PROXY}}")
-
+                      --data "{\"type\":\"A\",\"name\":\"$recname_to_change\",\"content\":\"$ipv4\",\"ttl\":\"$TTL\",\"proxied\":$3}")
   ## Report the status
   case "$update" in
   *"\"success\":false"*)
@@ -229,44 +275,86 @@ function update_all_cloudflare_records() {
       return 2
     fi
     local tmp_allrecs=$(mktemp '/tmp/ddns-allrecs-XXXXXXXX')
-    cat $tmp_allrecs_out | jq -r '.result[] | "\(.name) \(.id) \(.content)"' > $tmp_allrecs
+    ###  TEST
+    local tmp_data=$(cat $tmp_allrecs_out)
+    logit D "all_recs_out is ${tmp_data}"
+    ###
+    cat $tmp_allrecs_out | jq -r '.result[] | "\(.name) \(.id) \(.content) \(.proxied)"' > $tmp_allrecs
+    logit D "jq after:"
+    cat $tmp_allrecs
 # produces a file with multiple lines, 1 for every record with the format:
-# name record-identifier ip-address
+# name record-identifier ip-address proxied
     rm $tmp_allrecs_out
-
+    local skip_compare=false;
+    if [ ! -s ${tmp_allrecs} ]; then
+      logit I "No current DNS records exist. Skip compare against those";
+      skip_compare=true
+    fi
 # loop through the file, check if name is in RECORD_NAMES. If so, and different, call update
-    while IFS=" " read -r recname recid recip
-    do
-      local include_rec=false;
-      if [ -z "${RECORD_NAMES}" ]; then
-        logit D "Including all A records since RECORD_NAMES was empty"
-        include_rec=true;
-      else
-        logit D "Checking everything in RECORD_NAMES: ${RECORD_NAMES}"
-        for given_rec_name in $RECORD_NAMES; do
-          logit D "Checking given rec name ${given_rec_name} against ${recname}"
-            if [[ "${given_rec_name}.${DOMAIN_NAME}" == "${recname}" ]] || [[ "${DOMAIN_NAME}" == "${recname}" ]]; then
-              logit I "Including Record ${recname} because it matches cloudflare A record"
-              include_rec=true;
-            fi
-        done
-
-      fi
-      if [[ "${include_rec}" == "true" ]]; then
-        if [ "${recip}" != ${ipv4} ]; then
-          logit I "Updating cloudflare record ${recname} with id ${recid} to ip ${ipv4}"
-          update_one_cloudflare_record $recid $recname
-          update_result=$?
-          if [ "$update_result" != "0" ]; then
-            logit E "Update failed, exiting current loop"
+    if [ "${skip_compare}" = "false" ]; then
+        while IFS=" " read -r recname recid recip recproxy
+        do
+          local include_rec=false;
+          if [ -z "${RECORD_NAMES}" ]; then
+            logit D "Including all A records since RECORD_NAMES was empty"
+            include_rec=true;
+          else
+            logit D "Checking everything in RECORD_NAMES: ${RECORD_NAMES}"
+            for given_rec_name in $RECORD_NAMES; do
+              logit D "Checking given rec name ${given_rec_name} against ${recname}"
+                if [[ "${given_rec_name}.${DOMAIN_NAME}" == "${recname}" ]] || [[ "${DOMAIN_NAME}" == "${recname}" ]]; then
+                  logit I "Including Record ${recname} because it matches cloudflare A record"
+                  include_rec=true;
+                fi
+            done
           fi
-        else
-          logit I "Cloudflare record ${recname} with id ${recid} already has new ip ${ipv4}"
+          if [[ "${include_rec}" == "true" ]]; then
+            if [ "${recip}" != ${ipv4} ]; then
+              logit I "Updating cloudflare record ${recname} with id ${recid} to ip ${ipv4}"
+              update_one_cloudflare_record $recid $recname $recproxy
+              update_result=$?
+              if [ "$update_result" != "0" ]; then
+                logit E "Update failed, exiting current loop"
+              fi
+            else
+              logit I "Cloudflare record ${recname} with id ${recid} already has new ip ${ipv4}"
+            fi
+          else
+            logit I "Ignoring cloudflare record ${recname} with id ${recid} - not in RECORD_NAMES"
+          fi
+        done < $tmp_allrecs
+    fi    
+#   Now look in opposite direction, making sure every record in the RECORD_NAME list
+#   (and the DOMAIN_NAME) is in the file, otherwise create
+#
+#   First just check domain name alone
+#
+    if [ "${skip_compare}" = "true" ]; then
+        logit D "No existing recs, creating base domain name"
+        create_cloudflare_record ${DOMAIN_NAME} ${TTL} ${PROXY}
+    else
+        local domain_row=$(awk -v dn="${DOMAIN_NAME}" '$1==dn' ${tmp_allrecs})
+        logit D "Domain Row results: ${domain_row}"
+        if [ -z "${domain_row}" ]; then
+            create_cloudflare_record ${DOMAIN_NAME} ${TTL} ${PROXY}
         fi
-      else
-        logit I "Ignoring cloudflare record ${recname} with id ${recid} - not in RECORD_NAMES"
+    fi
+    for given_rec_name in $RECORD_NAMES; do
+      logit D "Reverse check ${given_rec_name} is in cloudflare"
+      local found_in_cloudflare=false;
+      if [ "${skip_compare}" = "false" ]; then
+          while IFS=" " read -r recname recid recip recproxy
+          do
+              if [ "${given_rec_name}.${DOMAIN_NAME}" = "${recname}" ]; then
+                  found_in_cloudflare=true;
+              fi
+          done < $tmp_allrecs
       fi
-    done < $tmp_allrecs
+      if [ "${found_in_cloudflare}" = "false" ]; then
+        create_cloudflare_record "${given_rec_name}.${DOMAIN_NAME}" ${TTL} ${PROXY}
+      fi
+    done
+
     rm $tmp_allrecs
 
 }
@@ -286,18 +374,18 @@ function get_check_update() {
   if [ "$is_same_as_cached" != "1" ]; then
     get_cloudflare_domain_record
     cloudflare_needs_update=$?
-    # TEST
-    update_all_cloudflare_records
-    # END TEST
-    if [ "$cloudflare_needs_update" = "1" ]; then
-      logit I "Cloudflare needs to be updated with changed IP"
+    if [ "$cloudflare_needs_update" = "1" ] || [ "$cloudflare_needs_update" = "3" ]; then
+      logit I "Cloudflare needs to be updated/created with changed IP"
       update_all_cloudflare_records
       local updated_ok=$?
       if [ "$updated_ok" != "0" ]; then
+          logit E "Error occured during update of cloudflare records"
           return 1;
+      else
+          logit I "All cloudflare records updated successfully"
       fi;
-      update_cache
     fi
+    update_cache
   fi
 }
 
@@ -318,9 +406,8 @@ if [ "${MODE}" = "once" ]; then
 fi
 while [ true ]
 do
-  logit I "Checking IP address for changes on timer loop"
+  logit I "Checking IP address for changes on timer loop every ${REPEAT_SECONDS} seconds"
   get_check_update
   sleep ${REPEAT_SECONDS}
 done
 rm ${CACHE_FILE}
-

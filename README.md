@@ -30,8 +30,8 @@ AUTH_KEY - API key / token
 ZONE_IDENTIFIER - Can be found in the "Overview" tab of your domain
 DOMAIN_NAME - non-prefixed domain name to update
 RECORD_NAMES - space separated list of records to update. Defaults to just the DOMAIN_NAME single entry. Used for wildcard support or multiple sub-domains. Do not include domain name/suffix, for example "* photos" would, if the DOMAIN_NAME was mydomain.tld, update the base domain name entry mydomain.tld, the wildcard entry *.mydomain.tld and the photos.mydomain.tld entry.
-TTL - DNS ttl
-PROXY - "true" if using a proxy, otherwise "false"
+TTL - DNS ttl in seconds (1 = auto)
+PROXY - "true" if you want to set new records to cloudflare proxy mode, otherwise existing value is used
 UPDATE_IPV6 - currently unsupported - "true" if you want to update the AAAA records for IPV6 as well as the IPv4 A records
 MODE - "loop" to keep updating, "once" to run one time (useful if scheduling other ways or for testing)
 REPEAT_SECONDS - Number of seconds between updates, defaults to 300
