@@ -1,16 +1,22 @@
 # Cloudflare Dynamic DNS IP Updater
 
-This script is used to update Dynamic DNS (DDNS) service based on Cloudflare! Access your home network remotely via a custom domain name without a static IP! Written in pure BASH.
+This script is used to update Dynamic DNS (DDNS) service based on Cloudflare. Access your home network remotely via a custom domain name without a static IP. Written in pure BASH.
 
 This was forked from the good work at [https://github.com/K0p1-Git/cloudflare-ddns-updater](https://github.com/K0p1-Git/cloudflare-ddns-updater).
 
-Main Features Included are:
+Main Features Included above/beyond that base are:
 - Main intent is to use with Docker/Kubernetes as a container -- container build included. Logs to stdout directly for container log viewing ease.
 - Date/Severity log format for ease of integration into log capture/reporting
 - Takes input from environment variables rather than hard-coded in the script
 - No need for cron - can run in a loop and keep updating every x seconds as specified
 - Ability to create the base entry for the domain in cloudflare, not just update existing
 - Can update multiple cloudflare records, not just the base domain
+
+## Why would I use this / FAQ
+- But ddclient does this already? Yes, ddclient is very good and I had been using it for a few years, but recently discovered it wasn't updating my cloudflare records. ddclient has undergone a maintainer change, and the fixes for some of these cloudflare bugs are not yet incorporated into a new release.
+- Why not just linuxserver/ddclient? Linuxserver has lots of great images, but the ddclient bug suffered from the issues above in the base ddclient. In addition, it didn't lend well towards running in a kubernetes environment, and was substantial unnecessary overhead for something relatively simple
+- In bash? really? Sure, maybe not the best decision, but the script is much shorter than ddclient source, and many people using it could check and see what is really happening and gain full transparency with this approach. I had considered javascript/node, but forcing that to get an IPv4 address instead of IPv6 was much more challenging, rather than a simple "curl -4".
+- Why not just the K0p1-Git fork? See above for what features are added, but my main need was for this to be containerized for a docker / kubernetes environment.
 
 ## Installation
 
