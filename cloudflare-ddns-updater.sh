@@ -272,6 +272,7 @@ function create_cloudflare_record() {
 ###########################################
 function update_one_cloudflare_record() {
   logit D "Updating one cloudflare record : $1"
+  logit D "The TTL to use is $TTL or maybe ${TTL}"
   local recid_to_change=$1
   local recname_to_change=$2
   local update_data=$(mktemp '/tmp/ddns-update1data-XXXXXXXX')
