@@ -6,7 +6,7 @@ AUTH_KEY=${AUTH_KEY:=""}                                # Your API Token or Glob
 ZONE_IDENTIFIER=${ZONE_IDENTIFIER:=""}                  # Can be found in the "Overview" tab of your domain
 DOMAIN_NAME=${DOMAIN_NAME:=""}                          # Domain name to update - (no prefix)
 RECORD_NAMES=${RECORD_NAMES:=""}                        # Which records you want to be synced (space separated list, without full domain name). If left empty will only update domain name entry
-TTL=${TTL:="1"}                                          # Set the DNS TTL (seconds) 1 = auto
+TTL=${TTL:=1}                                          # Set the DNS TTL (seconds) 1 = auto
 PROXY=${PROXY:="false"}                                 # Set the proxy to true or false
 UPDATE_IPV6=${UPDATE_IPV6:="false"}                     # Update IPV6 records in addition to IPV4
 MODE=${MODE:="loop"}                                    # "loop" or "once" - run forever in loop or just once
@@ -278,7 +278,7 @@ function update_one_cloudflare_record() {
   ## Change the IP@Cloudflare using the API
   update_httpcode=$(curl -s -w "%{http_code}" -o ${update_data} -X PATCH "https://api.cloudflare.com/client/v4/zones/$ZONE_IDENTIFIER/dns_records/$recid_to_change" \
                       -H "${auth_header}" -H "${email_header}" -H "${content_header}" \
-                      --data "{\"type\":\"A\",\"name\":\"$recname_to_change\",\"content\":\"$ipv4\",\"ttl\":\"$TTL\",\"proxied\":$3}")
+                      --data "{\"type\":\"A\",\"name\":\"$recname_to_change\",\"content\":\"$ipv4\",\"ttl\":$TTL,\"proxied\":$3}")
   if [ "${update_httpcode}" != "200" ]; then
       local update_results = $(cat ${update_data})
       logit E "Update of $ipv4 $recname_to_change DDNS failed for $recid_to_change ($ipv4). DUMPING RESULTS:\n$update_results"
