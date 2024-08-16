@@ -280,12 +280,14 @@ function update_one_cloudflare_record() {
                       -H "${auth_header}" -H "${email_header}" -H "${content_header}" \
                       --data "{\"type\":\"A\",\"name\":\"$recname_to_change\",\"content\":\"$ipv4\",\"ttl\":\"$TTL\",\"proxied\":$3}")
   if [ "${update_httpcode}" != "200" ]; then
-      logit E "Update of $ipv4 $recname_to_change DDNS failed for $recid_to_change ($ipv4). DUMPING RESULTS:\n$update"
+      local update_results = $(cat ${update_data})
+      logit E "Update of $ipv4 $recname_to_change DDNS failed for $recid_to_change ($ipv4). DUMPING RESULTS:\n$update_results"
       rm ${update_data}
       return 1;
   fi
   if [ ! -s ${update_data} ]; then
-      logit E "Update of $ipv4 $recname_to_change DDNS failed for $recid_to_change ($ipv4). DUMPING RESULTS:\n$update"
+      local update_results = $(cat ${update_data})
+      logit E "Update of $ipv4 $recname_to_change DDNS failed for $recid_to_change ($ipv4). DUMPING RESULTS:\n$update_results"
       rm ${update_data}
       return 1;
   fi
