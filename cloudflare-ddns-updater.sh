@@ -280,14 +280,16 @@ function update_one_cloudflare_record() {
   update_httpcode=$(curl -s -w "%{http_code}" -o ${update_data} -X PATCH "https://api.cloudflare.com/client/v4/zones/$ZONE_IDENTIFIER/dns_records/$recid_to_change" \
                       -H "${auth_header}" -H "${email_header}" -H "${content_header}" \
                       --data "{\"type\":\"A\",\"name\":\"$recname_to_change\",\"content\":\"$ipv4\",\"ttl\":$TTL,\"proxied\":$3}")
+  logit D "Update httpcode : ${update_httpcode}"                    
   if [ "${update_httpcode}" != "200" ]; then
-      local update_results = $(cat ${update_data})
+      local update_results=$(cat ${update_data})
       logit E "Update of $ipv4 $recname_to_change DDNS failed for $recid_to_change ($ipv4). DUMPING RESULTS:\n$update_results"
       rm ${update_data}
       return 1;
   fi
   if [ ! -s ${update_data} ]; then
       local update_results = $(cat ${update_data})
+      logit D "Update Data file exists or pasts not -s test"
       logit E "Update of $ipv4 $recname_to_change DDNS failed for $recid_to_change ($ipv4). DUMPING RESULTS:\n$update_results"
       rm ${update_data}
       return 1;
